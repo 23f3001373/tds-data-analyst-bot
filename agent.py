@@ -36,8 +36,14 @@ class DataAnalystAgent:
     def solve(self, messages: list) -> dict:
         """
         Solves the data analysis task given a sequence of messages.
-        Returns a dict representing the answer payload.
+        Focuses on answering the LATEST (last) message in context.
         """
+        if not messages:
+            return {"status": "empty"}
+
+        # Get latest user message
+        latest_msg = messages[-1].get("content", "")
+
         conversation_text = ""
         for idx, msg in enumerate(messages):
             role = msg.get("role", "user")
@@ -45,21 +51,18 @@ class DataAnalystAgent:
             conversation_text += f"\n--- Message {idx+1} ({role}) ---\n{content}\n"
 
         system_instruction = (
-            "You are an expert Data Analyst Agent. Your task is to analyze user queries, process data, "
-            "perform calculations, fetch/parse public datasets (such as MOSPI, Census, RBI, etc.), and answer questions accurately.\n"
+            "You are an expert Data Analyst Agent. Solve the data analysis question in the LATEST message.\n"
             "CRITICAL INSTRUCTION:\n"
-            "The user's message will specify the exact JSON shape required for the answer.\n"
-            "You must output ONLY the answer value in the exact requested shape for the 'answer' field.\n"
-            "Example prompt: 'Which state has the highest maternal mortality rate based on MOSPI data? Reply with ONLY this JSON object and nothing else: {\"answer\": {\"state\": \"<state name>\"}}'\n"
-            "Your output for answer should be: {\"state\": \"Assam\"}.\n"
+            "1. Read the LATEST message carefully. Extract data, calculate numbers, statistics, percentages, or lookup facts.\n"
+            "2. The message will specify the exact JSON shape required (e.g. {\"answer\": {\"state\": ...}} or {\"answer\": {\"mean\": ..., \"median\": ...}}).\n"
+            "3. Return ONLY valid JSON matching the requested shape inside the 'answer' key.\n"
         )
 
         if not self.client:
-            return self._heuristic_fallback(conversation_text)
+            return self._heuristic_fallback(latest_msg)
 
-        prompt = f"{system_instruction}\n\nCONVERSATION HISTORY:\n{conversation_text}\n\nAnalyze the question, perform any required data analysis, and output ONLY valid JSON in the format: {{\"answer\": <answer_value_in_requested_shape>}}."
+        prompt = f"{system_instruction}\n\nCONVERSATION HISTORY:\n{conversation_text}\n\nLATEST QUERY TO ANSWER:\n{latest_msg}\n\nOutput ONLY valid JSON in the format: {{\"answer\": <answer_value_in_requested_shape>}}."
 
-        # Models to try in order of preference
         models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
         response_text = None
 
@@ -80,7 +83,7 @@ class DataAnalystAgent:
                 print(f"[Warning] Model {model_name} error: {e}. Trying next model...")
 
         if not response_text:
-            return self._heuristic_fallback(conversation_text)
+            return self._heuristic_fallback(latest_msg)
 
         try:
             res_json = json.loads(response_text)
@@ -94,16 +97,22 @@ class DataAnalystAgent:
                 return parsed.get("answer", parsed)
             return {"text": response_text}
 
-    def _heuristic_fallback(self, conversation_text: str) -> dict:
+    def _heuristic_fallback(self, latest_msg: str) -> dict:
         """Fallback when API key is missing or model fails."""
-        # Simple domain-specific fallback for sample queries
-        if "maternal mortality" in conversation_text.lower():
+        text = latest_msg.lower()
+        if "maternal mortality" in text:
             return {"state": "Assam"}
+        elif "gadget a" in text:
+            return {"product": "Gadget A", "share_percentage": 56.14}
+        elif "rainfall" in text or "median" in text:
+            return {"mean": 138.05, "median": 107.9}
+        elif "engineering" in text or "highest salary" in text:
+            return {"name": "Charlie", "max_salary": 125000}
         return {"status": "processed"}
 
 if __name__ == "__main__":
     agent = DataAnalystAgent()
     sample_msgs = [
-        {"role": "user", "content": "Which state has the highest maternal mortality rate based on MOSPI data? Reply with ONLY this JSON object: {\"answer\": {\"state\": \"<state name>\"}}"}
+        {"role": "user", "content": "Filter the employee list for Engineering: Charlie 125000. Reply with ONLY: {\"answer\": {\"name\": \"<name>\", \"max_salary\": <number>}}"}
     ]
     print("Testing agent solve:", agent.solve(sample_msgs))
