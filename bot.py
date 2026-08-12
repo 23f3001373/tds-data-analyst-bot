@@ -26,9 +26,12 @@ LOG_FILE = Path(__file__).parent / "logs" / "run.jsonl"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-LOG_BASE_URL = os.environ.get("LOG_BASE_URL", "http://localhost:8000")
+LOG_BASE_URL = os.environ.get("LOG_BASE_URL", "https://web-production-e03154.up.railway.app")
 
-# Store conversation history per chat_id
+# Ensure LOG_BASE_URL starts with https:// or http://
+if LOG_BASE_URL and not LOG_BASE_URL.startswith("http://") and not LOG_BASE_URL.startswith("https://"):
+    LOG_BASE_URL = f"https://{LOG_BASE_URL}"
+
 chat_histories = {}
 agent = DataAnalystAgent()
 
